@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WorldPosta Access</title>
+    <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      console.log('[WorldPosta Access] Executing Tailwind configuration script block.');
+      // Defer configuration slightly to ensure Tailwind object is fully initialized (though typically not needed with sequential scripts)
+      // However, the primary check is 'typeof tailwind'.
+      
+      // Function to attempt configuration
+      function configureTailwind() {
+        console.log('[WorldPosta Access] Attempting to configure Tailwind...');
+        if (typeof tailwind !== 'undefined' && tailwind !== null) {
+          console.log('[WorldPosta Access] Tailwind object found. Type:', typeof tailwind, 'Content:', tailwind);
+          
+          const newConfig = {
+            darkMode: 'class', // or 'media'
+            theme: {
+              extend: {
+                colors: {
+                  'worldposta-primary': '#005A9C', 
+                  'worldposta-primary-dark': '#004478', 
+                  'worldposta-primary-light': '#E0F2FF', 
+
+                  'worldposta-accent-green': '#34A853',
+                  'worldposta-accent-green-dark': '#298442',
+
+                  'brand-text': '#202124', 
+                  'brand-text-secondary': '#5F6368', 
+                  'brand-text-light': '#FFFFFF', 
+                  'brand-text-light-secondary': '#BDC1C6',
+
+                  'brand-bg-light': '#FFFFFF', 
+                  'brand-bg-light-alt': '#F1F3F4',
+                  'brand-bg-dark': '#202124', 
+                  'brand-bg-dark-alt': '#2E2F32', 
+                  
+                  'brand-border': '#005A9C', 
+                  'brand-border-dark': '#337BB8',
+
+                  'danger': '#D93025', 
+                  'danger-dark': '#A50E0E', 
+                  'success': '#34A853', 
+                  'success-dark': '#298442',
+                  'warning': '#F9AB00',
+
+                  // Updated banner colors
+                  'worldposta-banner': '#005A9C', // New banner color
+                  'worldposta-banner-dark': '#004478', // Darker shade for banner accents
+
+                  // Footer colors
+                  'worldposta-footer-bg': '#333333',
+                  'worldposta-footer-border': '#4A4A4A',
+                },
+                fontFamily: {
+                  sans: ['Open Sans', 'ui-sans-serif', 'system-ui', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', '"Helvetica Neue"', 'Arial', '"Noto Sans"', 'sans-serif', '"Apple Color Emoji"', '"Segoe UI Emoji"', '"Segoe UI Symbol"', '"Noto Color Emoji"'],
+                },
+                ringColor: {
+                  DEFAULT: '#005A9C', 
+                  'worldposta-primary': '#005A9C', 
+                },
+                ringOffsetColor: {
+                  DEFAULT: '#FFFFFF',
+                  'brand-bg-light': '#FFFFFF',
+                  'brand-bg-light-alt': '#F1F3F4',
+                  'brand-bg-dark': '#202124',
+                  'brand-bg-dark-alt': '#2E2F32',
+                  'worldposta-banner': '#005A9C', 
+                }
+              }
+            }
+          };
+          
+          console.log('[WorldPosta Access] Proposed Tailwind config object:', JSON.parse(JSON.stringify(newConfig))); // Log a clean copy
+          tailwind.config = newConfig;
+          console.log('[WorldPosta Access] Tailwind configuration set. Current tailwind.config:', JSON.parse(JSON.stringify(tailwind.config)));
+        } else {
+          console.error('[WorldPosta Access] Error: Tailwind object (tailwind) is undefined or null. Ensure cdn.tailwindcss.com script is loaded and executed before this configuration script.');
+        }
+      }
+
+      // Try to configure immediately
+      configureTailwind();
+      
+      // As a fallback, if Tailwind initializes slightly later (uncommon for sync script)
+      // you might try a DOMContentLoaded, but this can be too late for initial @apply.
+      // document.addEventListener('DOMContentLoaded', configureTailwind);
+
+    </script>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://esm.sh/react@^19.1.0/",
+    "react": "https://esm.sh/react@^19.1.0",
+    "react-dom/": "https://esm.sh/react-dom@^19.1.0/",
+    "react-router-dom": "https://esm.sh/react-router-dom@^7.6.1"
+  }
+}
+</script>
+<style type="text/tailwindcss">
+  @tailwind base;
+  @tailwind components;
+  @tailwind utilities;
+
+  @layer base {
+    body {
+      font-family: 'Open Sans', sans-serif;
+      @apply bg-brand-bg-light dark:bg-brand-bg-dark;
+      @apply text-brand-text dark:text-brand-text-light;
+    }
+    /* For improved scrollbar styling (optional) */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      @apply bg-brand-bg-light-alt dark:bg-brand-bg-dark-alt;
+    }
+    ::-webkit-scrollbar-thumb {
+      @apply bg-brand-border dark:bg-brand-text-secondary rounded-full;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      @apply bg-gray-400 dark:bg-gray-500; /* Consider using a shade of the new primary for hover */
+    }
+
+    /* Global focus visible style for accessibility */
+    *:focus-visible {
+      @apply outline-none ring-2 ring-worldposta-primary ring-offset-2;
+    }
+    /* Remove default outline for elements that WILL get focus-visible */
+    *:focus {
+      outline: none;
+    }
+    
+    input:focus-visible, button:focus-visible, select:focus-visible, textarea:focus-visible {
+      /* Component-specific focus classes typically handle this if needed, global is a fallback */
+    }
+  }
+
+  /* Layer to prime Tailwind CDN with custom classes */
+  @layer utilities {
+    .prime-login-page-colors {
+      /* Backgrounds */
+      @apply bg-brand-bg-light-alt; /* Page background light */
+      @apply dark:bg-brand-bg-dark; /* Page background dark */
+      @apply bg-brand-bg-light; /* Card background light */
+      @apply dark:bg-brand-bg-dark-alt; /* Card background dark */
+      @apply bg-worldposta-footer-bg; /* Footer background */
+      
+      /* Text */
+      @apply text-worldposta-primary;
+      @apply dark:text-worldposta-primary-light;
+      @apply text-brand-text-secondary;
+      @apply dark:text-brand-text-light-secondary;
+      @apply text-brand-text;
+      @apply dark:text-brand-text-light;
+      @apply text-brand-text-light-secondary; /* For footer text */
+
+
+      /* Placeholders */
+      @apply placeholder-brand-text-secondary;
+      @apply dark:placeholder-brand-text-light-secondary;
+      /* Opacity for placeholders is applied via placeholder-opacity-70 which is standard */
+
+      /* Borders */
+      @apply border-brand-border;
+      @apply dark:border-brand-border-dark;
+      @apply border-danger;
+      @apply dark:border-danger/50; /* Custom opacity needs priming */
+      @apply border-worldposta-footer-border; /* Footer border */
+      
+      /* Error specific */
+      @apply bg-red-100; /* Standard, usually fine */
+      @apply dark:bg-danger/20; /* Custom opacity needs priming */
+      @apply text-danger;
+      @apply dark:text-red-300; /* Standard, usually fine */
+
+      /* Button & Focus rings (already defined in theme, but good to reinforce) */
+      @apply ring-worldposta-primary;
+      @apply focus:ring-worldposta-primary;
+      @apply bg-worldposta-primary;
+      @apply hover:bg-worldposta-primary-dark;
+      @apply ring-offset-brand-bg-light;
+      @apply dark:ring-offset-brand-bg-dark-alt;
+      
+      /* Banner colors for priming if needed, though direct usage is more common */
+      @apply bg-worldposta-banner;
+      @apply bg-worldposta-banner-dark;
+      @apply ring-offset-worldposta-banner;
+
+      /* Link hover for footer */
+      @apply hover:text-worldposta-primary-light;
+    }
+  }
+</style>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
