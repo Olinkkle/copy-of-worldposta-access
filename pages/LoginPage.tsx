@@ -5,7 +5,7 @@ import { useAuth } from '../App';
 import { Header } from '../components/Header';
 import { Footer } from '../components/Footer';
 import { AppRoutes } from '../types';
-import { EyeIcon, EyeSlashIcon, APP_NAME } from '../constants';
+import { EyeIcon, EyeSlashIcon, COMPANY_NAME } from '../constants'; // Use COMPANY_NAME
 
 export const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -49,8 +49,14 @@ export const LoginPage: React.FC = () => {
       <main className="flex-grow flex items-center justify-center p-4">
         <div className="w-full max-w-md bg-brand-bg-light dark:bg-brand-bg-dark-alt shadow-xl rounded-xl p-8 sm:p-10"> {/* Card background */}
           <div className="text-center mb-8">
-            <h1 className="text-3xl sm:text-4xl font-bold text-worldposta-primary dark:text-worldposta-primary-light">{APP_NAME}</h1>
-            <p className="text-brand-text-secondary dark:text-brand-text-light-secondary mt-2">Sign in to your WorldPosta services</p>
+            {/* Logo-like text */}
+            <h1 className="text-4xl sm:text-5xl font-bold text-worldposta-primary dark:text-worldposta-primary-light">
+              {COMPANY_NAME}
+            </h1>
+            {/* Subheading */}
+            <p className="text-brand-text-secondary dark:text-brand-text-light-secondary mt-3 text-lg">
+              Sign in to your Account
+            </p>
           </div>
 
           {error && (
@@ -147,6 +153,11 @@ export const LoginPage: React.FC = () => {
               Having trouble signing in? Get Help.
             </Link>
           </div>
+          
+          {/* Powered by WorldPosta */}
+          <p className="mt-10 text-xs text-brand-text-secondary dark:text-brand-text-light-secondary text-center">
+            Powered by {COMPANY_NAME}
+          </p>
         </div>
       </main>
       <Footer />
