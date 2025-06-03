@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { VDCResourceControl } from '../components/VDCResourceControl';
-import { HelpIcon, ExternalLinkIcon } from '../constants';
+import { HelpIcon, ExternalLinkIcon, ChevronDownIcon } from '../constants';
 
 const generateId = () => `config_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
@@ -16,7 +16,7 @@ interface VDCResourceDefinition {
   id: string;
   label: string;
   unit: string;
-  pricePerUnit: number;
+  pricePerUnit: number; // Base price, region/type multipliers applied dynamically
   min: number;
   max: number;
   step: number;
@@ -29,7 +29,6 @@ const CLOUD_EDGE_RESOURCE_DEFINITIONS: VDCResourceDefinition[] = [
   { id: 'cores', label: 'CPU Cores', unit: 'vCPU', pricePerUnit: 10.00, min: 1, max: 128, step: 1, defaultValue: 2, tooltip: "Virtual CPU cores for your instance or VDC." },
   { id: 'ram', label: 'RAM', unit: 'GB', pricePerUnit: 5.00, min: 1, max: 512, step: 1, defaultValue: 4, tooltip: "Random Access Memory for your instance or VDC." },
   { id: 'flashDisk', label: 'Flash Disk Storage / Boot Disk Size', unit: 'GB', pricePerUnit: 0.10, min: 10, max: 10240, step: 10, defaultValue: 50, tooltip: "Primary high-speed storage. For Instances, this is the Boot Disk size." },
-  { id: 'ephemeralPublicIPs', label: 'Ephemeral Public IPs', unit: 'IP', pricePerUnit: 2.00, min: 0, max: 10, step: 1, defaultValue: 0, tooltip: "Dynamic IP addresses, released when the instance stops." },
   { id: 'staticPublicIPs', label: 'Static Public IPs', unit: 'IP', pricePerUnit: 4.00, min: 0, max: 64, step: 1, defaultValue: 0, tooltip: "Fixed IP addresses reserved for your use." },
   { id: 'objectStorage', label: 'Object Storage', unit: 'GB', pricePerUnit: 0.02, min: 0, max: 102400, step: 100, defaultValue: 0, tooltip: "Scalable storage for unstructured data." },
   { id: 'advBackup', label: 'Advanced Backup by Veeam', unit: 'GB', pricePerUnit: 0.05, min: 0, max: 100000, step: 50, defaultValue: 0, tooltip: "Backup storage managed by Veeam." },
@@ -87,8 +86,8 @@ const BOOT_DISK_TYPE_OPTIONS = [
 ];
 
 const GPU_TYPE_OPTIONS = [
-    { id: 'wp-gpu-t4', name: 'WP GPU T4-Class (General Purpose)', priceMonthly: 150, compatibleSeries: ['wp-n-series', 'wp-c-series'] },
-    { id: 'wp-gpu-a100', name: 'WP GPU A100-Class (Compute Optimized)', priceMonthly: 400, compatibleSeries: ['wp-a-series'] },
+    { id: 'wp-gpu-shared', name: 'GPU shared h100', priceMonthly: 150, compatibleSeries: ['wp-n-series', 'wp-c-series'] },
+    { id: 'wp-gpu-dedicated', name: 'GPU Dedicated h100', priceMonthly: 400, compatibleSeries: ['wp-a-series'] },
 ];
 
 const INSTANCE_TEMPLATE_OPTIONS = [
@@ -122,10 +121,36 @@ interface CloudEdgeConfiguration {
   advancedSettingsEnabled: boolean;
 }
 
+// SummaryItem type needs to be defined to be used in state
+type SummaryItem = {
+    id: string;
+    name: string;
+    serviceTypeName: string;
+    quantity: number;
+    regionName: string;
+    details: string; // This was the full concatenated string, may need to rethink for modal
+    coreResourcesSummary: string; // New for better display in modal
+    otherResourcesList: { label: string; value: string }[]; // New for modal
+    osSummary: string;
+    provisioningSummary: string;
+    gpuSummary: string;
+    addonsSummary: string;
+    monthlyPricePerUnit: number;
+    totalCostForPeriod: number;
+    billingCycleText: string;
+    duration: SubscriptionDuration;
+    instanceTemplateName?: string;
+    bootDiskTypeName?: string;
+    threadsPerCore?: 1 | 2;
+    confidentialVmEnabled?: boolean;
+};
+
+
 const buttonPrimaryStyle = "bg-worldposta-primary hover:bg-worldposta-primary-dark text-brand-text-light font-semibold py-2 px-4 rounded-lg transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-worldposta-primary dark:focus:ring-offset-brand-bg-dark-alt disabled:opacity-60";
 const buttonSecondaryStyle = "bg-brand-bg-light-alt hover:bg-opacity-80 dark:bg-brand-bg-dark hover:dark:bg-opacity-80 border border-brand-border dark:border-brand-border-dark text-brand-text dark:text-brand-text-light font-semibold py-2 px-4 rounded-lg transition-colors";
 const inputStyle = "block w-full px-3 py-2 border border-brand-border dark:border-brand-border-dark rounded-md focus:outline-none focus:ring-worldposta-primary focus:border-worldposta-primary sm:text-sm bg-brand-bg-light-alt dark:bg-brand-bg-dark text-brand-text dark:text-brand-text-light";
 const iconButtonStyles = "p-2 rounded-md hover:bg-brand-bg-light-alt dark:hover:bg-brand-bg-dark focus:outline-none focus:ring-2 focus:ring-worldposta-primary focus:ring-offset-1 dark:focus:ring-offset-brand-bg-dark-alt transition-colors";
+const selectStyle = `${inputStyle} appearance-none pr-10`; // Added pr-10 for icon space
 
 
 export const ManageCloudEdgeSubscriptionPage: React.FC = () => {
@@ -133,7 +158,12 @@ export const ManageCloudEdgeSubscriptionPage: React.FC = () => {
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingConfiguration, setEditingConfiguration] = useState<CloudEdgeConfiguration | null>(null);
-  
+
+  // State for the new Details Modal
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
+  const [configForDetailsModal, setConfigForDetailsModal] = useState<CloudEdgeConfiguration | null>(null);
+  const [summaryItemForDetailsModal, setSummaryItemForDetailsModal] = useState<SummaryItem | null>(null);
+
   // Modal state variables
   const [currentModalConfigName, setCurrentModalConfigName] = useState('');
   const [currentModalServiceType, setCurrentModalServiceType] = useState<ServiceType>('instance');
@@ -168,13 +198,13 @@ export const ManageCloudEdgeSubscriptionPage: React.FC = () => {
         setCurrentModalConfigName(`Configuration #${configurations.length + 1}`);
         setCurrentModalServiceType('instance');
         setCurrentModalInstanceTemplateId(template.id); // Default template
-        setCurrentModalResourceValues({ ...template.resources }); // Set resources from default template
+        setCurrentModalResourceValues({ ...defaultResources, ...template.resources }); // Set resources from default template
         setCurrentModalOperatingSystemId(template.defaultOsId);
         setCurrentModalBootDiskTypeId(template.defaultBootDiskTypeId);
         setCurrentModalQuantity(1);
         setCurrentModalDuration('monthly');
         setCurrentModalRegion(DEFAULT_REGION_ID);
-        setCurrentModalAddons(getDefaultAddons());
+        setCurrentModalAddons(getDefaultAddons().map(a => ({...a})));
         setCurrentModalProvisioningModel(PROVISIONING_MODEL_OPTIONS[0].id);
         setCurrentModalThreadsPerCore(2);
         setCurrentModalConfidentialVmEnabled(false);
@@ -193,32 +223,32 @@ export const ManageCloudEdgeSubscriptionPage: React.FC = () => {
         setCurrentModalQuantity(configToLoad.quantity);
         setCurrentModalDuration(configToLoad.duration);
         setCurrentModalRegion(configToLoad.region);
-        setCurrentModalAddons(configToLoad.addons.map(a => ({...a})));
+        setCurrentModalAddons(configToLoad.addons.map(a => ({...a})),
+        );
         setCurrentModalProvisioningModel(configToLoad.provisioningModel);
         setCurrentModalThreadsPerCore(configToLoad.threadsPerCore);
         setCurrentModalConfidentialVmEnabled(configToLoad.confidentialVmEnabled);
         setCurrentModalGpusEnabled(configToLoad.gpusEnabled);
         setCurrentModalGpuTypeId(configToLoad.gpuTypeId);
-        setCurrentModalGpuCount(configToLoad.gpuCount);
+        setCurrentModalGpuCount(configToLoad.gpuCount || 0);
         setCurrentModalAdvancedSettingsEnabled(configToLoad.advancedSettingsEnabled);
         setEditingConfiguration(configToLoad);
     }
   };
   
-  // Effect to update core resources when service type or instance template changes
   useEffect(() => {
     if (currentModalServiceType === 'instance') {
         const selectedTemplate = INSTANCE_TEMPLATE_OPTIONS.find(t => t.id === currentModalInstanceTemplateId);
         if (selectedTemplate) {
             setCurrentModalResourceValues(prev => ({
-                ...prev, // Keep other resource values
+                ...prev, 
                 cores: selectedTemplate.resources.cores,
                 ram: selectedTemplate.resources.ram,
                 flashDisk: selectedTemplate.resources.flashDisk,
             }));
             setCurrentModalOperatingSystemId(selectedTemplate.defaultOsId);
             setCurrentModalBootDiskTypeId(selectedTemplate.defaultBootDiskTypeId);
-        } else if (INSTANCE_TEMPLATE_OPTIONS.length > 0) { // Fallback to first template if current invalid
+        } else if (INSTANCE_TEMPLATE_OPTIONS.length > 0) { 
             const firstTemplate = INSTANCE_TEMPLATE_OPTIONS[0];
             setCurrentModalInstanceTemplateId(firstTemplate.id);
             setCurrentModalResourceValues(prev => ({
@@ -230,15 +260,37 @@ export const ManageCloudEdgeSubscriptionPage: React.FC = () => {
             setCurrentModalOperatingSystemId(firstTemplate.defaultOsId);
             setCurrentModalBootDiskTypeId(firstTemplate.defaultBootDiskTypeId);
         }
-    } else { // VDC
-        // Users can freely edit, no template lock-in for core resources
+    } else { 
+        const defaultResources = CLOUD_EDGE_RESOURCE_DEFINITIONS.reduce((acc, def) => {
+            if (['cores', 'ram', 'flashDisk'].includes(def.id)) {
+                 acc[def.id] = currentModalResourceValues[def.id] || def.defaultValue;
+            }
+            return acc;
+        }, {} as Record<string, number>);
+        setCurrentModalResourceValues(prev => ({...prev, ...defaultResources}));
     }
   }, [currentModalServiceType, currentModalInstanceTemplateId]);
 
+  useEffect(() => {
+    if (currentModalGpusEnabled && currentModalGpuTypeId) {
+        const selectedGpuDef = GPU_TYPE_OPTIONS.find(g => g.id === currentModalGpuTypeId);
+        if (selectedGpuDef) {
+            const maxGpu = selectedGpuDef.id === 'wp-gpu-shared' ? 8 : (selectedGpuDef.id === 'wp-gpu-dedicated' ? 7 : 1); 
+            if (currentModalGpuCount === undefined || currentModalGpuCount === null || currentModalGpuCount < 1 || currentModalGpuCount > maxGpu) {
+                setCurrentModalGpuCount(1); 
+            }
+        } else {
+            setCurrentModalGpuCount(0);
+        }
+    } else {
+        setCurrentModalGpuCount(0); 
+    }
+  }, [currentModalGpusEnabled, currentModalGpuTypeId, currentModalGpuCount]);
+
 
   useEffect(() => {
-    handleLoadEstimateFromLocalStorage(false);
-  }, []);
+    handleLoadEstimateFromLocalStorage(false); 
+  }, []); 
 
   useEffect(() => {
     if (toastMessage) {
@@ -273,14 +325,14 @@ export const ManageCloudEdgeSubscriptionPage: React.FC = () => {
       let value = resourceValues[def.id] || 0;
       let unitPrice = def.pricePerUnit * regionPriceMultiplier;
       
-      if (def.id === 'flashDisk') { // Apply boot disk type multiplier
+      if (def.id === 'flashDisk') { 
         unitPrice *= bootDiskType.pricePerGBMultiplier;
       }
       price += value * unitPrice;
     });
 
     if (os && os.priceMonthly) {
-        price += os.priceMonthly; // OS cost is typically global or handled by region pricing in real systems
+        price += os.priceMonthly; 
     }
 
     if (gpusEnabled && gpuTypeId && gpuCount && gpuCount > 0) {
@@ -294,7 +346,7 @@ export const ManageCloudEdgeSubscriptionPage: React.FC = () => {
       if (addon.selected) price += addon.priceMonthly; 
     });
 
-    price *= provModel.priceMultiplier; // Apply provisioning model discount last to total resource cost
+    price *= provModel.priceMultiplier; 
 
     return price;
   }, []);
@@ -312,7 +364,7 @@ export const ManageCloudEdgeSubscriptionPage: React.FC = () => {
     resetModalToDefaults(false, config);
     if (duplicate) {
         setCurrentModalConfigName(`Copy of ${config.name}`);
-        setEditingConfiguration(null); // It's a new config
+        setEditingConfiguration(null); 
     }
     setIsModalOpen(true);
   };
@@ -352,7 +404,7 @@ export const ManageCloudEdgeSubscriptionPage: React.FC = () => {
       confidentialVmEnabled: currentModalConfidentialVmEnabled,
       gpusEnabled: currentModalGpusEnabled,
       gpuTypeId: currentModalGpusEnabled ? currentModalGpuTypeId : undefined,
-      gpuCount: currentModalGpusEnabled ? currentModalGpuCount : 0,
+      gpuCount: currentModalGpusEnabled ? (currentModalGpuCount || 0) : 0,
       advancedSettingsEnabled: currentModalAdvancedSettingsEnabled,
     };
 
@@ -395,7 +447,7 @@ export const ManageCloudEdgeSubscriptionPage: React.FC = () => {
   ]);
 
 
-  const summaryItems = useMemo(() => {
+  const summaryItems: SummaryItem[] = useMemo(() => {
     return configurations.map(config => {
       const monthlyPricePerUnit = calculateMonthlyPriceForSingleUnit(
         config.resourceValues, config.addons, config.region,
@@ -406,11 +458,20 @@ export const ManageCloudEdgeSubscriptionPage: React.FC = () => {
       const totalCostForPeriod = monthlyPricePerUnit * config.quantity * durationInfo.priceMultiplier;
       const regionName = WORLDPOSTA_REGIONS.find(r => r.id === config.region)?.name || config.region;
       const serviceTypeName = config.serviceType === 'vdc' ? 'Virtual Data Center' : 'Instance';
-      const osName = OPERATING_SYSTEM_OPTIONS.find(os => os.id === config.operatingSystemId)?.name || 'N/A';
-      const provModelName = PROVISIONING_MODEL_OPTIONS.find(pm => pm.id === config.provisioningModel)?.name || 'N/A';
-      const gpuSummary = config.gpusEnabled && config.gpuCount && config.gpuTypeId 
-        ? `${config.gpuCount}x ${GPU_TYPE_OPTIONS.find(g=>g.id === config.gpuTypeId)?.name || 'GPU'}` 
-        : 'No GPUs';
+      const os = OPERATING_SYSTEM_OPTIONS.find(os => os.id === config.operatingSystemId);
+      const provModel = PROVISIONING_MODEL_OPTIONS.find(pm => pm.id === config.provisioningModel);
+      const gpu = GPU_TYPE_OPTIONS.find(g => g.id === config.gpuTypeId);
+      const instanceTemplate = INSTANCE_TEMPLATE_OPTIONS.find(it => it.id === config.instanceTemplateId);
+      const bootDiskType = BOOT_DISK_TYPE_OPTIONS.find(bdt => bdt.id === config.bootDiskTypeId);
+
+      const coreResourcesSummary = CLOUD_EDGE_RESOURCE_DEFINITIONS
+        .filter(def => ['cores', 'ram', 'flashDisk'].includes(def.id))
+        .map(def => `${config.resourceValues[def.id]}${def.unit} ${def.label.split(" ")[0]}`)
+        .join(' / ');
+      
+      const otherResourcesList = CLOUD_EDGE_RESOURCE_DEFINITIONS
+        .filter(def => !['cores', 'ram', 'flashDisk'].includes(def.id) && (config.resourceValues[def.id] > 0 || (def.min > 0 && config.resourceValues[def.id] === def.min)))
+        .map(def => ({ label: def.label, value: `${config.resourceValues[def.id]} ${def.unit}` }));
 
       return {
         id: config.id,
@@ -418,18 +479,23 @@ export const ManageCloudEdgeSubscriptionPage: React.FC = () => {
         serviceTypeName,
         quantity: config.quantity,
         regionName,
-        details: CLOUD_EDGE_RESOURCE_DEFINITIONS.map(def => {
-            const val = config.resourceValues[def.id];
-            return val > 0 || (def.min > 0 && val === def.min) ? `${val}${def.unit} ${def.label.split(" ")[0]}` : null;
-        }).filter(Boolean).join(', '),
-        osSummary: `OS: ${osName}`,
-        provisioningSummary: `Model: ${provModelName}`,
-        gpuSummary: `GPUs: ${gpuSummary}`,
+        coreResourcesSummary,
+        otherResourcesList,
+        details: '', // Keep for compatibility, not used in condensed summary
+        osSummary: `OS: ${os?.name || 'N/A'}`,
+        provisioningSummary: `Model: ${provModel?.name || 'N/A'}`,
+        gpuSummary: config.gpusEnabled && config.gpuCount && config.gpuCount > 0 && gpu 
+          ? `GPUs: ${config.gpuCount}x ${gpu.name}`
+          : 'GPUs: No GPUs',
         addonsSummary: config.addons.filter(a => a.selected).map(a => a.name).join(', ') || 'None',
         monthlyPricePerUnit: monthlyPricePerUnit,
         totalCostForPeriod: totalCostForPeriod,
         billingCycleText: durationInfo.name,
         duration: config.duration,
+        instanceTemplateName: instanceTemplate?.name,
+        bootDiskTypeName: bootDiskType?.name,
+        threadsPerCore: config.threadsPerCore,
+        confidentialVmEnabled: config.confidentialVmEnabled,
       };
     });
   }, [configurations, calculateMonthlyPriceForSingleUnit]);
@@ -442,10 +508,9 @@ export const ManageCloudEdgeSubscriptionPage: React.FC = () => {
     try {
       const serializedConfigs = configurations.map(config => ({
         ...config,
-        // Ensure all potentially undefined fields from advanced options are handled
-        instanceTemplateId: config.instanceTemplateId || undefined,
+        instanceTemplateId: config.instanceTemplateId || undefined, 
         gpuTypeId: config.gpuTypeId || undefined,
-        gpuCount: config.gpuCount || 0,
+        gpuCount: config.gpuCount || 0, 
       }));
       localStorage.setItem('worldpostaCloudEdgeEstimate', JSON.stringify(serializedConfigs));
       showToast('Estimate saved successfully!');
@@ -462,7 +527,7 @@ export const ManageCloudEdgeSubscriptionPage: React.FC = () => {
         const parsedConfigurations: Partial<CloudEdgeConfiguration>[] = JSON.parse(savedEstimate);
         if (Array.isArray(parsedConfigurations)) {
             const migratedConfigurations = parsedConfigurations.map(config => {
-                const template = INSTANCE_TEMPLATE_OPTIONS[0]; // A default template
+                const template = INSTANCE_TEMPLATE_OPTIONS[0]; 
                 const defaultResources = CLOUD_EDGE_RESOURCE_DEFINITIONS.reduce((acc, def) => {
                     acc[def.id] = def.defaultValue;
                     return acc;
@@ -473,7 +538,7 @@ export const ManageCloudEdgeSubscriptionPage: React.FC = () => {
                     name: config.name || 'Unnamed Configuration',
                     serviceType: config.serviceType || 'instance',
                     resourceValues: { ...defaultResources, ...(config.resourceValues || {}) },
-                    addons: Array.isArray(config.addons) ? config.addons.map(a => ({...a})) : getDefaultAddons(),
+                    addons: Array.isArray(config.addons) ? config.addons.map(a => ({...a})) : getDefaultAddons().map(a => ({...a})),
                     quantity: config.quantity || 1,
                     duration: config.duration || 'monthly',
                     region: config.region || DEFAULT_REGION_ID,
@@ -487,7 +552,7 @@ export const ManageCloudEdgeSubscriptionPage: React.FC = () => {
                     gpuTypeId: config.gpuTypeId || (config.gpusEnabled ? GPU_TYPE_OPTIONS[0].id : undefined),
                     gpuCount: config.gpuCount || 0,
                     advancedSettingsEnabled: config.advancedSettingsEnabled || false,
-                } as CloudEdgeConfiguration;
+                } as CloudEdgeConfiguration; 
             });
             setConfigurations(migratedConfigurations);
             if (showSuccessToast) showToast('Estimate loaded successfully!');
@@ -520,14 +585,17 @@ export const ManageCloudEdgeSubscriptionPage: React.FC = () => {
       body += `Configuration: ${item.name} (x${item.quantity}) - Type: ${item.serviceTypeName}\n`;
       body += ` Region: ${item.regionName}\n`;
       body += ` ${item.osSummary} | ${item.provisioningSummary} | ${item.gpuSummary}\n`;
-      body += ` Main Resources: ${item.details}\n`;
+      body += ` Core Resources: ${item.coreResourcesSummary}\n`;
+      if (item.otherResourcesList.length > 0) {
+        body += ` Other Resources: ${item.otherResourcesList.map(r => `${r.value} ${r.label}`).join(', ')}\n`;
+      }
       if (item.addonsSummary !== 'None') body += ` Addons: ${item.addonsSummary}\n`;
       body += ` Billing: ${item.billingCycleText}\n`;
       body += ` Cost: $${item.totalCostForPeriod.toFixed(2)}\n\n`;
     });
     body += `Grand Total: $${grandTotalForPeriod.toFixed(2)}\n\n`;
     body += "This estimate was generated using the WorldPosta CloudEdge Calculator.\n";
-    body += `\nTo view/edit this estimate online (if saved locally by sender):\n${window.location.href}`;
+    body += `\nTo view/edit this estimate online (if saved locally by sender):\n${window.location.href}`; 
 
     const mailtoLink = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     window.location.href = mailtoLink;
@@ -540,17 +608,19 @@ export const ManageCloudEdgeSubscriptionPage: React.FC = () => {
       return;
     }
     let csvContent = "data:text/csv;charset=utf-8,";
-    csvContent += "Config Name,Service Type,Qty,Region,OS,Prov. Model,GPUs,Main Resources,Addons,Unit Monthly Price,Billing Cycle,Total Cost\n";
+    csvContent += "Config Name,Service Type,Qty,Region,OS,Prov. Model,GPUs,Core Resources,Other Resources,Addons,Unit Monthly Price,Billing Cycle,Total Cost\n";
     summaryItems.forEach(item => {
+      const otherResourcesText = item.otherResourcesList.map(r => `${r.value} ${r.label}`).join('; ');
       const row = [
-        `"${item.name.replace(/"/g, '""')}"`,
+        `"${item.name.replace(/"/g, '""')}"`, 
         `"${item.serviceTypeName.replace(/"/g, '""')}"`,
         item.quantity,
         `"${item.regionName.replace(/"/g, '""')}"`,
-        `"${item.osSummary.replace('OS: ','').replace(/"/g, '""')}"`,
+        `"${item.osSummary.replace('OS: ','').replace(/"/g, '""')}"`, 
         `"${item.provisioningSummary.replace('Model: ','').replace(/"/g, '""')}"`,
         `"${item.gpuSummary.replace('GPUs: ','').replace(/"/g, '""')}"`,
-        `"${item.details.replace(/"/g, '""')}"`,
+        `"${item.coreResourcesSummary.replace(/"/g, '""')}"`,
+        `"${otherResourcesText.replace(/"/g, '""')}"`,
         `"${item.addonsSummary.replace(/"/g, '""')}"`,
         item.monthlyPricePerUnit.toFixed(2),
         `"${item.billingCycleText.replace(/"/g, '""')}"`,
@@ -558,7 +628,7 @@ export const ManageCloudEdgeSubscriptionPage: React.FC = () => {
       ].join(",");
       csvContent += row + "\n";
     });
-    csvContent += `\n,,,,,,,,,"Grand Total:",,$${grandTotalForPeriod.toFixed(2)}\n`;
+    csvContent += `\n,,,,,,,,,,"Grand Total:",,$${grandTotalForPeriod.toFixed(2)}\n`; 
 
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
@@ -572,51 +642,32 @@ export const ManageCloudEdgeSubscriptionPage: React.FC = () => {
 
 
   const renderConfigurationCard = (config: CloudEdgeConfiguration) => {
-    const monthlyPricePerUnit = calculateMonthlyPriceForSingleUnit(
-        config.resourceValues, config.addons, config.region,
-        config.provisioningModel, config.operatingSystemId, config.bootDiskTypeId,
-        config.gpusEnabled, config.gpuTypeId, config.gpuCount
-    );
-    const durationInfo = getDurationInfo(config.duration);
-    const totalCostForPeriod = monthlyPricePerUnit * config.quantity * durationInfo.priceMultiplier;
-    const priceDisplay = `$${totalCostForPeriod.toFixed(2)}${durationInfo.suffix}`;
-    const regionName = WORLDPOSTA_REGIONS.find(r => r.id === config.region)?.name || config.region;
-    const serviceTypeName = config.serviceType === 'vdc' ? 'Virtual Data Center' : 'Instance';
-    const osName = OPERATING_SYSTEM_OPTIONS.find(os => os.id === config.operatingSystemId)?.name || 'N/A';
-    const provModelName = PROVISIONING_MODEL_OPTIONS.find(pm => pm.id === config.provisioningModel)?.name || 'N/A';
-    const gpuSummary = config.gpusEnabled && config.gpuCount && config.gpuTypeId 
-        ? `${config.gpuCount}x ${GPU_TYPE_OPTIONS.find(g=>g.id === config.gpuTypeId)?.name || 'GPU'}` 
-        : 'No GPUs';
+    const summaryForItem = summaryItems.find(si => si.id === config.id);
+    if (!summaryForItem) return null;
 
-    const mainResourcesSummary = CLOUD_EDGE_RESOURCE_DEFINITIONS
-      .filter(def => ['cores', 'ram', 'flashDisk'].includes(def.id)) 
-      .map(def => {
-          const val = config.resourceValues[def.id];
-          return val > 0 || (def.min > 0 && val === def.min) ? `${val}${def.unit}` : null;
-      }).filter(Boolean).join(' / ');
+    const priceDisplay = `$${summaryForItem.totalCostForPeriod.toFixed(2)}${getDurationInfo(config.duration).suffix.replace('/mo', ` / ${getDurationInfo(config.duration).name.toLowerCase()}`)}`;
     
-    const otherResourcesCount = CLOUD_EDGE_RESOURCE_DEFINITIONS
-        .filter(def => !['cores', 'ram', 'flashDisk'].includes(def.id) && (config.resourceValues[def.id] > 0 || (def.min > 0 && config.resourceValues[def.id] === def.min)))
-        .length;
+    const mainResourcesSummary = summaryForItem.coreResourcesSummary;
+    const otherResourcesCount = summaryForItem.otherResourcesList.length;
 
     return (
         <div key={config.id} className="p-4 border border-brand-border dark:border-brand-border-dark rounded-lg bg-brand-bg-light-alt dark:bg-brand-bg-dark group">
             <div className="flex justify-between items-start mb-2">
                 <div>
                     <h3 className="text-lg font-semibold text-brand-text dark:text-brand-text-light">{config.name} (x{config.quantity})</h3>
-                    <p className="text-xs text-brand-text-secondary dark:text-brand-text-light-secondary">Type: {serviceTypeName} | Duration: {durationInfo.name} | Region: {regionName}</p>
-                    <p className="text-xs text-brand-text-secondary dark:text-brand-text-light-secondary">OS: {osName} | Model: {provModelName}</p>
+                    <p className="text-xs text-brand-text-secondary dark:text-brand-text-light-secondary">Type: {summaryForItem.serviceTypeName} | Duration: {summaryForItem.billingCycleText} | Region: {summaryForItem.regionName}</p>
+                    <p className="text-xs text-brand-text-secondary dark:text-brand-text-light-secondary">{summaryForItem.osSummary} | {summaryForItem.provisioningSummary}</p>
                 </div>
                 <span className="text-lg font-semibold text-worldposta-primary dark:text-worldposta-primary-light whitespace-nowrap">{priceDisplay}</span>
             </div>
             <div className="text-sm text-brand-text dark:text-brand-text-light space-y-1">
                 <p><span className="font-medium">Main:</span> {mainResourcesSummary || "N/A"}</p>
-                 {gpuSummary !== 'No GPUs' && <p><span className="font-medium">GPUs:</span> {gpuSummary}</p>}
+                 {summaryForItem.gpuSummary !== 'GPUs: No GPUs' && <p><span className="font-medium">GPUs:</span> {summaryForItem.gpuSummary.replace('GPUs: ', '')}</p>}
                 {otherResourcesCount > 0 && 
                     <p><span className="font-medium">Other:</span> {otherResourcesCount} additional resource(s)</p>
                 }
-                {config.addons.filter(a => a.selected).length > 0 && 
-                    <p className="text-xs"><span className="font-medium">Addons:</span> {config.addons.filter(a => a.selected).map(a => a.name).join(', ')}</p>
+                {summaryForItem.addonsSummary !== 'None' && 
+                    <p className="text-xs"><span className="font-medium">Addons:</span> {summaryForItem.addonsSummary}</p>
                 }
             </div>
             <div className="mt-3 flex space-x-2">
@@ -629,13 +680,19 @@ export const ManageCloudEdgeSubscriptionPage: React.FC = () => {
   };
 
   const renderCoreResourceControl = (resDef: VDCResourceDefinition) => {
-    const isDisabled = currentModalServiceType === 'instance' && ['cores', 'ram', 'flashDisk'].includes(resDef.id);
+    const currentRegionMultiplier = WORLDPOSTA_REGIONS.find(r=>r.id === currentModalRegion)?.priceMultiplier || 1;
+    let pricePerUnit = resDef.pricePerUnit * currentRegionMultiplier;
+    if (resDef.id === 'flashDisk') {
+        const bootDiskType = BOOT_DISK_TYPE_OPTIONS.find(bdt => bdt.id === currentModalBootDiskTypeId) || BOOT_DISK_TYPE_OPTIONS[0];
+        pricePerUnit *= bootDiskType.pricePerGBMultiplier;
+    }
+
     return (
       <VDCResourceControl
         key={resDef.id}
         id={resDef.id}
         label={resDef.label}
-        priceText={`$${(resDef.pricePerUnit * (WORLDPOSTA_REGIONS.find(r=>r.id === currentModalRegion)?.priceMultiplier || 1)).toFixed(2)} / ${resDef.unit} / mo (in region)`}
+        priceText={`$${pricePerUnit.toFixed(2)} / ${resDef.unit} / mo`}
         min={resDef.min}
         max={resDef.max}
         step={resDef.step}
@@ -643,9 +700,19 @@ export const ManageCloudEdgeSubscriptionPage: React.FC = () => {
         unitLabel={!['VM License', 'OS License', 'Endpoint License', 'Instance', 'IP', 'vCPU'].includes(resDef.unit) ? resDef.unit : undefined}
         unitLabelForValue={resDef.unit}
         onChange={(value) => handleModalResourceChange(resDef.id, value)}
-        disabled={isDisabled}
+        disabled={currentModalServiceType === 'instance' && ['cores', 'ram', 'flashDisk'].includes(resDef.id)} 
       />
     );
+  };
+
+  const handleViewDetails = (configId: string) => {
+    const config = configurations.find(c => c.id === configId);
+    const summary = summaryItems.find(si => si.id === configId);
+    if (config && summary) {
+        setConfigForDetailsModal(config);
+        setSummaryItemForDetailsModal(summary);
+        setIsDetailsModalOpen(true);
+    }
   };
 
 
@@ -719,15 +786,19 @@ export const ManageCloudEdgeSubscriptionPage: React.FC = () => {
             ) : (
                 summaryItems.map(item => (
                     <div key={item.id} className="text-sm py-2 border-b border-brand-border dark:border-brand-border-dark last:border-b-0">
-                        <div className="flex justify-between">
+                        <div className="flex justify-between items-center">
                             <span className="font-medium text-brand-text dark:text-brand-text-light">{item.name} (x{item.quantity})</span>
-                            <span className="text-brand-text dark:text-brand-text-light">${item.totalCostForPeriod.toFixed(2)}</span>
+                            <span className="text-brand-text dark:text-brand-text-light font-semibold">${item.totalCostForPeriod.toFixed(2)}</span>
                         </div>
-                        <div className="text-xs text-brand-text-secondary dark:text-brand-text-light-secondary">Type: {item.serviceTypeName} | Region: {item.regionName}</div>
-                        <div className="text-xs text-brand-text-secondary dark:text-brand-text-light-secondary truncate" title={item.details}>Main: {item.details || 'Base'}</div>
-                        <div className="text-xs text-brand-text-secondary dark:text-brand-text-light-secondary">{item.osSummary} | {item.provisioningSummary} | {item.gpuSummary}</div>
-                         {item.addonsSummary !== 'None' && <div className="text-xs text-brand-text-secondary dark:text-brand-text-light-secondary truncate" title={item.addonsSummary}>Addons: {item.addonsSummary}</div> }
-                        <div className="text-xs text-brand-text-secondary dark:text-brand-text-light-secondary">Unit Monthly: ${item.monthlyPricePerUnit.toFixed(2)} | Billing: {item.billingCycleText}</div>
+                        <div className="text-xs text-brand-text-secondary dark:text-brand-text-light-secondary">
+                            {item.serviceTypeName} | {item.regionName} | Unit Monthly: ${item.monthlyPricePerUnit.toFixed(2)} | {item.billingCycleText}
+                        </div>
+                         <button 
+                            onClick={() => handleViewDetails(item.id)} 
+                            className="mt-1 text-xs text-worldposta-primary dark:text-worldposta-primary-light hover:underline focus:outline-none"
+                         >
+                            View Details
+                        </button>
                     </div>
                 ))
             )}
@@ -747,6 +818,66 @@ export const ManageCloudEdgeSubscriptionPage: React.FC = () => {
         </div>
       </div>
       
+      {isDetailsModalOpen && configForDetailsModal && summaryItemForDetailsModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[110] flex items-center justify-center p-2 sm:p-4 transition-opacity duration-300 ease-in-out animate-modalFadeInOverall" role="dialog" aria-modal="true" aria-labelledby="detailsModalTitle">
+            <div className="bg-brand-bg-light dark:bg-brand-bg-dark-alt rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col transform transition-all duration-300 ease-in-out scale-95 animate-modalFadeInContent">
+                <div className="flex justify-between items-center p-4 sm:p-6 border-b border-brand-border dark:border-brand-border-dark">
+                    <h2 id="detailsModalTitle" className="text-xl sm:text-2xl font-semibold text-brand-text dark:text-brand-text-light">
+                        Configuration Details: {summaryItemForDetailsModal.name}
+                    </h2>
+                    <button onClick={() => setIsDetailsModalOpen(false)} className="text-brand-text-secondary dark:text-brand-text-light-secondary hover:text-brand-text dark:hover:text-brand-text-light text-3xl leading-none p-1 rounded-full hover:bg-brand-bg-light-alt dark:hover:bg-brand-bg-dark" aria-label="Close details modal">&times;</button>
+                </div>
+                <div className="flex-grow overflow-y-auto p-4 sm:p-6 space-y-4 text-sm text-brand-text dark:text-brand-text-light scrollbar-thin">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <p><strong>Name:</strong> {summaryItemForDetailsModal.name}</p>
+                        <p><strong>Quantity:</strong> {summaryItemForDetailsModal.quantity}</p>
+                        <p><strong>Service Type:</strong> {summaryItemForDetailsModal.serviceTypeName}</p>
+                        <p><strong>Region:</strong> {summaryItemForDetailsModal.regionName}</p>
+                        <p><strong>Commitment Term:</strong> {summaryItemForDetailsModal.billingCycleText}</p>
+                        <p><strong>Unit Monthly Price:</strong> ${summaryItemForDetailsModal.monthlyPricePerUnit.toFixed(2)}</p>
+                        <p className="sm:col-span-2"><strong>Total Cost for Period:</strong> <span className="font-bold text-lg">${summaryItemForDetailsModal.totalCostForPeriod.toFixed(2)}</span></p>
+                    </div>
+
+                    <h4 className="font-semibold mt-3 pt-3 border-t border-brand-border/50 dark:border-brand-border-dark/50">Core Resources:</h4>
+                    {configForDetailsModal.serviceType === 'instance' && summaryItemForDetailsModal.instanceTemplateName && (
+                        <p><strong>Instance Template:</strong> {summaryItemForDetailsModal.instanceTemplateName}</p>
+                    )}
+                    <p>{summaryItemForDetailsModal.coreResourcesSummary}</p>
+                    
+                    <h4 className="font-semibold mt-3 pt-3 border-t border-brand-border/50 dark:border-brand-border-dark/50">Advanced Settings:</h4>
+                    <p>{summaryItemForDetailsModal.osSummary}</p>
+                    <p>{summaryItemForDetailsModal.provisioningSummary}</p>
+                    <p><strong>Machine Type (Boot Disk):</strong> {summaryItemForDetailsModal.bootDiskTypeName || 'N/A'}</p>
+                    <p><strong>Threads per Core:</strong> {summaryItemForDetailsModal.threadsPerCore || 'N/A'}</p>
+                    <p><strong>Confidential VM:</strong> {summaryItemForDetailsModal.confidentialVmEnabled ? 'Enabled' : 'Disabled'}</p>
+                    <p>{summaryItemForDetailsModal.gpuSummary}</p>
+
+                    {summaryItemForDetailsModal.otherResourcesList.length > 0 && (
+                        <>
+                            <h4 className="font-semibold mt-3 pt-3 border-t border-brand-border/50 dark:border-brand-border-dark/50">Other Resources:</h4>
+                            <ul className="list-disc list-inside pl-2">
+                                {summaryItemForDetailsModal.otherResourcesList.map(res => (
+                                    <li key={res.label}>{res.label}: {res.value}</li>
+                                ))}
+                            </ul>
+                        </>
+                    )}
+
+                    {summaryItemForDetailsModal.addonsSummary !== 'None' && (
+                        <>
+                            <h4 className="font-semibold mt-3 pt-3 border-t border-brand-border/50 dark:border-brand-border-dark/50">Add-ons:</h4>
+                            <p>{summaryItemForDetailsModal.addonsSummary}</p>
+                        </>
+                    )}
+                </div>
+                 <div className="p-4 sm:p-6 border-t border-brand-border dark:border-brand-border-dark text-right">
+                    <button onClick={() => setIsDetailsModalOpen(false)} className={`${buttonSecondaryStyle} text-sm`} aria-label="Close details modal">Close</button>
+                </div>
+            </div>
+        </div>
+      )}
+
+
        {isModalOpen && (
             <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[100] flex items-center justify-center p-2 sm:p-4 transition-opacity duration-300 ease-in-out animate-modalFadeInOverall" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
                 <div className="bg-brand-bg-light dark:bg-brand-bg-dark-alt rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col transform transition-all duration-300 ease-in-out scale-95 opacity-0 animate-modalFadeInContent">
@@ -757,8 +888,7 @@ export const ManageCloudEdgeSubscriptionPage: React.FC = () => {
                         <button onClick={() => setIsModalOpen(false)} className="text-brand-text-secondary dark:text-brand-text-light-secondary hover:text-brand-text dark:hover:text-brand-text-light text-3xl leading-none p-1 rounded-full hover:bg-brand-bg-light-alt dark:hover:bg-brand-bg-dark" aria-label="Close modal">&times;</button>
                     </div>
                     
-                    <div className="flex-grow overflow-y-auto p-4 sm:p-6 space-y-6">
-                        {/* -- Basic Configuration Section -- */}
+                    <div className="flex-grow overflow-y-auto p-4 sm:p-6 space-y-6 scrollbar-thin scrollbar-thumb-brand-border dark:scrollbar-thumb-brand-text-secondary scrollbar-track-brand-bg-light-alt dark:scrollbar-track-brand-bg-dark-alt">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
                             <div>
                                 <label htmlFor="configName" className="block text-sm font-medium text-brand-text dark:text-brand-text-light mb-1">Configuration Name:</label>
@@ -781,35 +911,66 @@ export const ManageCloudEdgeSubscriptionPage: React.FC = () => {
                             </div>
                             <div>
                                 <label htmlFor="configRegion" className="block text-sm font-medium text-brand-text dark:text-brand-text-light mb-1">Deployment Region:</label>
-                                <select id="configRegion" value={currentModalRegion} onChange={(e) => setCurrentModalRegion(e.target.value)} className={`${inputStyle} appearance-none`}>
-                                    {WORLDPOSTA_REGIONS.map(region => (<option key={region.id} value={region.id}>{region.name}</option>))}
-                                </select>
+                                <div className="relative">
+                                    <select id="configRegion" value={currentModalRegion} onChange={(e) => setCurrentModalRegion(e.target.value)} className={selectStyle}>
+                                        {WORLDPOSTA_REGIONS.map(region => (<option key={region.id} value={region.id}>{region.name}</option>))}
+                                    </select>
+                                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-brand-text-secondary dark:text-brand-text-light-secondary">
+                                        <ChevronDownIcon className="w-5 h-5" />
+                                    </div>
+                                </div>
                             </div>
                              <div>
                                 <label htmlFor="configDuration" className="block text-sm font-medium text-brand-text dark:text-brand-text-light mb-1">Commitment Term:</label>
-                                <select id="configDuration" value={currentModalDuration} onChange={(e) => setCurrentModalDuration(e.target.value as SubscriptionDuration)} className={`${inputStyle} appearance-none`}>
-                                    {COMMITMENT_TERM_OPTIONS.map(opt => (<option key={opt.id} value={opt.id}>{opt.name}</option>))}
-                                </select>
+                                <div className="relative">
+                                    <select id="configDuration" value={currentModalDuration} onChange={(e) => setCurrentModalDuration(e.target.value as SubscriptionDuration)} className={selectStyle}>
+                                        {COMMITMENT_TERM_OPTIONS.map(opt => (<option key={opt.id} value={opt.id}>{opt.name}</option>))}
+                                    </select>
+                                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-brand-text-secondary dark:text-brand-text-light-secondary">
+                                        <ChevronDownIcon className="w-5 h-5" />
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
-                         {/* -- Core Compute Resources Section -- */}
                         <div className="border-t border-brand-border dark:border-brand-border-dark pt-4">
                             <h3 className="text-md font-semibold text-brand-text dark:text-brand-text-light mb-2">Core Compute Resources</h3>
                              {currentModalServiceType === 'instance' && (
                                 <div className="mb-4">
                                     <label htmlFor="instanceTemplate" className="block text-sm font-medium text-brand-text dark:text-brand-text-light mb-1">Instance Template:</label>
-                                    <select id="instanceTemplate" value={currentModalInstanceTemplateId} onChange={(e) => setCurrentModalInstanceTemplateId(e.target.value)} className={`${inputStyle} appearance-none`}>
-                                        {INSTANCE_TEMPLATE_OPTIONS.map(template => (<option key={template.id} value={template.id}>{template.name}</option>))}
-                                    </select>
+                                    <div className="relative">
+                                        <select 
+                                          id="instanceTemplate" 
+                                          value={currentModalInstanceTemplateId} 
+                                          onChange={(e) => setCurrentModalInstanceTemplateId(e.target.value)} 
+                                          className={selectStyle}
+                                          aria-label="Instance Template"
+                                        >
+                                            {INSTANCE_TEMPLATE_OPTIONS.map(template => (<option key={template.id} value={template.id}>{template.name}</option>))}
+                                        </select>
+                                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-brand-text-secondary dark:text-brand-text-light-secondary">
+                                            <ChevronDownIcon className="w-5 h-5" />
+                                        </div>
+                                    </div>
+                                    {(() => {
+                                        const selectedTemplate = INSTANCE_TEMPLATE_OPTIONS.find(t => t.id === currentModalInstanceTemplateId);
+                                        if (selectedTemplate) {
+                                            return (
+                                                <div className="mt-1.5 p-2 bg-brand-bg-light-alt dark:bg-brand-bg-dark rounded-md text-xs text-brand-text-secondary dark:text-brand-text-light-secondary">
+                                                    Template provides: <strong className="text-brand-text dark:text-brand-text-light">{selectedTemplate.resources.cores} vCPU</strong> / <strong className="text-brand-text dark:text-brand-text-light">{selectedTemplate.resources.ram} GB RAM</strong> / <strong className="text-brand-text dark:text-brand-text-light">{selectedTemplate.resources.flashDisk} GB Boot Disk</strong>
+                                                </div>
+                                            );
+                                        }
+                                        return null;
+                                    })()}
                                 </div>
                             )}
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-x-4 gap-y-1">
+                           
+                            <div className={`grid grid-cols-1 md:grid-cols-3 gap-x-4 gap-y-1 ${currentModalServiceType === 'instance' ? 'hidden' : ''}`}>
                                 {CLOUD_EDGE_RESOURCE_DEFINITIONS.filter(def => ['cores', 'ram', 'flashDisk'].includes(def.id)).map(renderCoreResourceControl)}
                             </div>
                         </div>
                         
-                        {/* -- Advanced Settings Toggle -- */}
                         <div className="flex items-center justify-between py-3 border-t border-brand-border dark:border-brand-border-dark mt-4">
                             <h3 className="text-md font-semibold text-brand-text dark:text-brand-text-light">Advanced Settings & Optional Resources</h3>
                             <button 
@@ -821,15 +982,19 @@ export const ManageCloudEdgeSubscriptionPage: React.FC = () => {
                             </button>
                         </div>
 
-                        {/* -- Advanced Configuration Section (Conditional) -- */}
                         {currentModalAdvancedSettingsEnabled && (
                             <div className="space-y-4 pt-2 pl-2 border-l-2 border-worldposta-primary/30">
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
                                     <div>
                                         <label htmlFor="osSelect" className="block text-sm font-medium text-brand-text dark:text-brand-text-light mb-1">Operating System / Software:</label>
-                                        <select id="osSelect" value={currentModalOperatingSystemId} onChange={e => setCurrentModalOperatingSystemId(e.target.value)} className={`${inputStyle} appearance-none`}>
-                                            {OPERATING_SYSTEM_OPTIONS.map(os => (<option key={os.id} value={os.id}>{os.name} {os.priceMonthly > 0 ? `(+$${os.priceMonthly}/mo)` : ''}</option>))}
-                                        </select>
+                                        <div className="relative">
+                                            <select id="osSelect" value={currentModalOperatingSystemId} onChange={e => setCurrentModalOperatingSystemId(e.target.value)} className={selectStyle}>
+                                                {OPERATING_SYSTEM_OPTIONS.map(os => (<option key={os.id} value={os.id}>{os.name} {os.priceMonthly > 0 ? `(+$${os.priceMonthly}/mo)` : ''}</option>))}
+                                            </select>
+                                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-brand-text-secondary dark:text-brand-text-light-secondary">
+                                                <ChevronDownIcon className="w-5 h-5" />
+                                            </div>
+                                        </div>
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium text-brand-text dark:text-brand-text-light mb-1">Provisioning Model:</label>
@@ -843,10 +1008,15 @@ export const ManageCloudEdgeSubscriptionPage: React.FC = () => {
                                         </div>
                                     </div>
                                     <div>
-                                        <label htmlFor="bootDiskType" className="block text-sm font-medium text-brand-text dark:text-brand-text-light mb-1">Boot Disk Type:</label>
-                                        <select id="bootDiskType" value={currentModalBootDiskTypeId} onChange={e => setCurrentModalBootDiskTypeId(e.target.value)} className={`${inputStyle} appearance-none`}>
-                                            {BOOT_DISK_TYPE_OPTIONS.map(bdt => (<option key={bdt.id} value={bdt.id}>{bdt.name}</option>))}
-                                        </select>
+                                        <label htmlFor="bootDiskType" className="block text-sm font-medium text-brand-text dark:text-brand-text-light mb-1">Machine Type:</label>
+                                        <div className="relative">
+                                            <select id="bootDiskType" value={currentModalBootDiskTypeId} onChange={e => setCurrentModalBootDiskTypeId(e.target.value)} className={selectStyle}>
+                                                {BOOT_DISK_TYPE_OPTIONS.map(bdt => (<option key={bdt.id} value={bdt.id}>{bdt.name}</option>))}
+                                            </select>
+                                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-brand-text-secondary dark:text-brand-text-light-secondary">
+                                                <ChevronDownIcon className="w-5 h-5" />
+                                            </div>
+                                        </div>
                                          <p className="text-xs text-brand-text-secondary dark:text-brand-text-light-secondary mt-0.5">Applies to "Flash Disk Storage / Boot Disk Size".</p>
                                     </div>
                                      <div>
@@ -878,14 +1048,44 @@ export const ManageCloudEdgeSubscriptionPage: React.FC = () => {
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 pl-6 border-l-2 border-dotted border-worldposta-primary/50 ml-2">
                                         <div>
                                             <label htmlFor="gpuType" className="block text-sm font-medium text-brand-text dark:text-brand-text-light mb-1">GPU Type:</label>
-                                            <select id="gpuType" value={currentModalGpuTypeId} onChange={e => setCurrentModalGpuTypeId(e.target.value)} className={`${inputStyle} appearance-none`}>
-                                                {GPU_TYPE_OPTIONS.map(gpu => (<option key={gpu.id} value={gpu.id}>{gpu.name} (+$${gpu.priceMonthly}/mo)</option>))}
-                                            </select>
+                                            <div className="relative">
+                                                <select id="gpuType" value={currentModalGpuTypeId} onChange={e => setCurrentModalGpuTypeId(e.target.value)} className={selectStyle}>
+                                                    {GPU_TYPE_OPTIONS.map(gpu => (<option key={gpu.id} value={gpu.id}>{gpu.name} (+$${gpu.priceMonthly}/mo)</option>))}
+                                                </select>
+                                                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-brand-text-secondary dark:text-brand-text-light-secondary">
+                                                    <ChevronDownIcon className="w-5 h-5" />
+                                                </div>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <label htmlFor="gpuCount" className="block text-sm font-medium text-brand-text dark:text-brand-text-light mb-1">Number of GPUs:</label>
-                                            <input type="number" id="gpuCount" value={currentModalGpuCount} min="0" max="8" step="1" onChange={e => setCurrentModalGpuCount(parseInt(e.target.value) || 0)} className={`${inputStyle} w-24`}/>
-                                        </div>
+                                        {currentModalGpuTypeId && (
+                                            <div>
+                                                <label htmlFor="gpuCount" className="block text-sm font-medium text-brand-text dark:text-brand-text-light mb-1">Number of GPUs:</label>
+                                                <div className="relative w-24">
+                                                    <select
+                                                        id="gpuCount"
+                                                        value={currentModalGpuCount || 0}
+                                                        onChange={e => setCurrentModalGpuCount(parseInt(e.target.value, 10))}
+                                                        className={`${selectStyle} w-full`} 
+                                                        aria-label="Number of GPUs"
+                                                    >
+                                                        {(() => {
+                                                            const selectedGpuDef = GPU_TYPE_OPTIONS.find(g => g.id === currentModalGpuTypeId);
+                                                            if (!selectedGpuDef) return <option value="0">N/A</option>;
+
+                                                            const maxGpu = selectedGpuDef.id === 'wp-gpu-shared' ? 8 : (selectedGpuDef.id === 'wp-gpu-dedicated' ? 7 : 0);
+                                                            if (maxGpu === 0) return <option value="0">None</option>;
+
+                                                            return Array.from({ length: maxGpu }, (_, i) => i + 1).map(num => (
+                                                                <option key={num} value={num}>{num}</option>
+                                                            ));
+                                                        })()}
+                                                    </select>
+                                                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-brand-text-secondary dark:text-brand-text-light-secondary">
+                                                        <ChevronDownIcon className="w-5 h-5" />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                                 
@@ -926,12 +1126,16 @@ export const ManageCloudEdgeSubscriptionPage: React.FC = () => {
                     @keyframes modalFadeInContent { from { opacity: 0; transform: scale(0.95) translateY(-20px); } to { opacity: 1; transform: scale(1) translateY(0); } }
                     .animate-modalFadeInOverall { animation: modalFadeInOverall 0.2s forwards ease-out; }
                     .animate-modalFadeInContent { animation: modalFadeInContent 0.3s forwards ease-out; }
-                    .scrollbar-thin { scrollbar-width: thin; scrollbar-color: #E5E7EB #F3F4F6; } /* For Firefox */
-                    .max-h-\\[calc\\(60vh-280px\\)\\]::-webkit-scrollbar, .max-h-\\[calc\\(70vh-320px\\)\\]::-webkit-scrollbar { width: 6px; height: 6px; }
-                    .scrollbar-thumb-brand-border::-webkit-scrollbar-thumb { background-color: #D1D5DB; border-radius: 3px; } /* Lighter gray for light mode */
-                    .dark .scrollbar-thumb-brand-text-secondary::-webkit-scrollbar-thumb { background-color: #4B5563; border-radius: 3px; } 
-                    .scrollbar-track-brand-bg-light-alt::-webkit-scrollbar-track { background-color: #F3F4F6; border-radius: 3px; } 
-                    .dark .scrollbar-track-brand-bg-dark-alt::-webkit-scrollbar-track { background-color: #2E2F32; border-radius: 3px; }
+                    .scrollbar-thin { scrollbar-width: thin; scrollbar-color: #CBD5E1 #E2E8F0; } 
+                    .dark .scrollbar-thin { scrollbar-color: #4A5568 #2D3748; }
+                    
+                    .scrollbar-thin::-webkit-scrollbar { width: 8px; height: 8px; }
+                    .scrollbar-thin::-webkit-scrollbar-track { background: #E2E8F0; border-radius:4px; }
+                    .dark .scrollbar-thin::-webkit-scrollbar-track { background: #2D3748; }
+                    .scrollbar-thin::-webkit-scrollbar-thumb { background-color: #CBD5E1; border-radius: 4px; border: 2px solid #E2E8F0; }
+                    .dark .scrollbar-thin::-webkit-scrollbar-thumb { background-color: #4A5568; border: 2px solid #2D3748; }
+                    .scrollbar-thin::-webkit-scrollbar-thumb:hover { background-color: #A0AEC0; }
+                    .dark .scrollbar-thin::-webkit-scrollbar-thumb:hover { background-color: #718096; }
                 ` }} />
             </div>
         )}

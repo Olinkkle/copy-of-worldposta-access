@@ -71,7 +71,7 @@ export const VDCResourceControl: React.FC<VDCResourceControlProps> = ({
         </div>
       </div>
       <div className="flex items-center space-x-1.5 mt-1">
-        <button onClick={decrement} className={inputButtonClasses} aria-label={`Decrement ${label}`} disabled={disabled}>-</button>
+        <button onClick={decrement} className={inputButtonClasses} aria-label={`Decrement ${label}`} disabled={disabled || value <= min}>-</button>
         <input
           type="number"
           value={value}
@@ -83,7 +83,7 @@ export const VDCResourceControl: React.FC<VDCResourceControlProps> = ({
           aria-label={`${label} value`}
           disabled={disabled}
         />
-        <button onClick={increment} className={inputButtonClasses} aria-label={`Increment ${label}`} disabled={disabled}>+</button>
+        <button onClick={increment} className={inputButtonClasses} aria-label={`Increment ${label}`} disabled={disabled || value >= max}>+</button>
       </div>
       <div className="mt-2.5">
         <input
