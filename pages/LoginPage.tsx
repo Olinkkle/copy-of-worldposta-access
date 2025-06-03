@@ -39,15 +39,15 @@ export const LoginPage: React.FC = () => {
     setIsLoading(false);
   };
   
-  const inputClasses = "mt-1 block w-full px-3.5 py-2.5 border border-brand-border dark:border-brand-border-dark rounded-lg placeholder-brand-text-secondary placeholder-opacity-70 dark:placeholder-brand-text-light-secondary dark:placeholder-opacity-70 focus:outline-none focus:ring-2 focus:ring-worldposta-primary focus:border-worldposta-primary sm:text-sm bg-brand-bg-light-alt dark:bg-brand-bg-dark-alt text-brand-text dark:text-brand-text-light";
+  const inputClasses = "mt-1 block w-full px-3.5 py-2.5 border border-brand-border dark:border-brand-border-dark rounded-lg placeholder-brand-text-secondary placeholder-opacity-70 dark:placeholder-brand-text-light-secondary dark:placeholder-opacity-70 focus:outline-none focus:ring-2 focus:ring-worldposta-primary focus:border-transparent sm:text-sm bg-brand-bg-light-alt dark:bg-brand-bg-dark-alt text-brand-text dark:text-brand-text-light transition-all duration-200 ease-in-out focus:shadow-md focus:shadow-worldposta-primary/30 dark:focus:shadow-worldposta-primary-light/20 focus:-translate-y-px";
   const linkClasses = "font-medium text-worldposta-primary dark:text-worldposta-primary-light hover:text-worldposta-primary-dark dark:hover:text-worldposta-primary-light dark:hover:opacity-80 hover:underline transition-colors";
 
 
   return (
     <div className="min-h-screen flex flex-col bg-brand-bg-light-alt dark:bg-brand-bg-dark"> {/* Page background updated for light mode contrast */}
       <Header isLoggedIn={false} />
-      <main className="flex-grow flex items-center justify-center p-4">
-        <div className="w-full max-w-md bg-brand-bg-light dark:bg-brand-bg-dark-alt shadow-xl rounded-xl p-8 sm:p-10"> {/* Card background */}
+      <main className="flex-grow flex flex-col items-center justify-center p-4 pt-20 sm:pt-24">
+        <div className="w-full max-w-md bg-brand-bg-light dark:bg-brand-bg-dark-alt shadow-xl rounded-xl p-8 sm:p-10 transition-all duration-300 ease-in-out hover:shadow-2xl"> {/* Card background */}
           <div className="text-center mb-8">
             {/* Logo-like text */}
             <h1 className="text-4xl sm:text-5xl font-bold text-worldposta-primary dark:text-worldposta-primary-light">
@@ -130,9 +130,19 @@ export const LoginPage: React.FC = () => {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-semibold text-brand-text-light bg-worldposta-primary hover:bg-worldposta-primary-dark focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-worldposta-primary dark:focus:ring-offset-brand-bg-dark-alt disabled:opacity-70 transition-colors"
+                className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-semibold text-brand-text-light bg-worldposta-primary hover:bg-worldposta-primary-dark focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-worldposta-primary dark:focus:ring-offset-brand-bg-dark-alt disabled:opacity-70 transition-all duration-200 ease-in-out transform hover:-translate-y-px hover:scale-[1.02] focus:scale-[1.02] active:scale-[0.98] hover:shadow-lg dark:hover:shadow-worldposta-primary/30"
               >
-                {isLoading ? 'Signing In...' : 'Sign In'}
+                {isLoading ? (
+                  <span className="flex items-center justify-center">
+                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Signing In...
+                  </span>
+                ) : (
+                  'Sign In'
+                )}
               </button>
             </div>
           </form>
