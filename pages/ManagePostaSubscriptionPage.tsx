@@ -1,6 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { ExternalLinkIcon } from '../constants';
+import { Stepper } from '../components/Stepper'; // Import Stepper
 
 interface Addon {
   id: string;
@@ -30,6 +31,8 @@ const cloneAddons = (addons: Addon[]): Addon[] => addons.map(addon => ({ ...addo
 
 const inputStyle = "block w-full px-3 py-2 border border-brand-border dark:border-brand-border-dark rounded-md focus:outline-none focus:ring-worldposta-primary focus:border-worldposta-primary sm:text-sm bg-brand-bg-light-alt dark:bg-brand-bg-dark text-brand-text dark:text-brand-text-light";
 const buttonPrimaryStyle = "bg-worldposta-primary hover:bg-worldposta-primary-dark text-brand-text-light font-semibold py-2 px-4 rounded-lg transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-worldposta-primary dark:focus:ring-offset-brand-bg-dark-alt";
+
+const CHECKOUT_STEPS = ["Order", "Checkout", "Confirmation"];
 
 export const ManagePostaSubscriptionPage: React.FC = () => {
   const [postaSubscriptions, setPostaSubscriptions] = useState<ConfigurableSubscriptionItem[]>(
@@ -153,9 +156,13 @@ export const ManagePostaSubscriptionPage: React.FC = () => {
 
   return (
     <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <h1 className="text-3xl sm:text-4xl font-bold text-brand-text dark:text-brand-text-light mb-8">
+      <h1 className="text-3xl sm:text-4xl font-bold text-brand-text dark:text-brand-text-light mb-4">
         Manage Posta Email Subscriptions
       </h1>
+
+      <div className="mb-8 p-4 bg-brand-bg-light dark:bg-brand-bg-dark-alt shadow-md rounded-lg">
+        <Stepper steps={CHECKOUT_STEPS} currentStepIndex={0} />
+      </div>
 
       <div className="flex flex-col lg:flex-row gap-8">
         <div className="lg:w-2/3 space-y-8">

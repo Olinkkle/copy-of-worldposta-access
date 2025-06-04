@@ -1,7 +1,16 @@
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { VDCResourceControl } from '../components/VDCResourceControl';
-import { HelpIcon, ExternalLinkIcon, ChevronDownIcon } from '../constants';
+import { Stepper } from '../components/Stepper'; // Import Stepper
+import { 
+    HelpIcon, 
+    ExternalLinkIcon, 
+    ChevronDownIcon,
+    ArchiveBoxArrowDownIcon, // For Save Estimate
+    FolderOpenIcon,          // For Load Estimate
+    EnvelopeIcon,            // For Email Estimate
+    DocumentArrowDownIcon    // For Download CSV
+} from '../constants';
 
 const generateId = () => `config_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
@@ -113,7 +122,6 @@ interface CloudEdgeConfiguration {
   provisioningModel: typeof PROVISIONING_MODEL_OPTIONS[number]['id'];
   instanceTemplateId?: string; 
   bootDiskTypeId: typeof BOOT_DISK_TYPE_OPTIONS[number]['id'];
-  threadsPerCore: 1 | 2;
   confidentialVmEnabled: boolean;
   gpusEnabled: boolean;
   gpuTypeId?: typeof GPU_TYPE_OPTIONS[number]['id'];
@@ -141,16 +149,18 @@ type SummaryItem = {
     duration: SubscriptionDuration;
     instanceTemplateName?: string;
     bootDiskTypeName?: string;
-    threadsPerCore?: 1 | 2;
     confidentialVmEnabled?: boolean;
 };
 
 
-const buttonPrimaryStyle = "bg-worldposta-primary hover:bg-worldposta-primary-dark text-brand-text-light font-semibold py-2 px-4 rounded-lg transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-worldposta-primary dark:focus:ring-offset-brand-bg-dark-alt disabled:opacity-60";
-const buttonSecondaryStyle = "bg-brand-bg-light-alt hover:bg-opacity-80 dark:bg-brand-bg-dark hover:dark:bg-opacity-80 border border-brand-border dark:border-brand-border-dark text-brand-text dark:text-brand-text-light font-semibold py-2 px-4 rounded-lg transition-colors";
+const buttonPrimaryStyle = "bg-worldposta-primary hover:bg-worldposta-primary-dark text-brand-text-light font-semibold py-1.5 px-4 rounded-lg transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-worldposta-primary dark:focus:ring-offset-brand-bg-dark-alt disabled:opacity-60";
+const buttonSecondaryStyle = "bg-brand-bg-light-alt hover:bg-opacity-80 dark:bg-brand-bg-dark hover:dark:bg-opacity-80 border border-brand-border dark:border-brand-border-dark text-brand-text dark:text-brand-text-light font-semibold py-1.5 px-4 rounded-lg transition-colors";
 const inputStyle = "block w-full px-3 py-2 border border-brand-border dark:border-brand-border-dark rounded-md focus:outline-none focus:ring-worldposta-primary focus:border-worldposta-primary sm:text-sm bg-brand-bg-light-alt dark:bg-brand-bg-dark text-brand-text dark:text-brand-text-light";
-const iconButtonStyles = "p-2 rounded-md hover:bg-brand-bg-light-alt dark:hover:bg-brand-bg-dark focus:outline-none focus:ring-2 focus:ring-worldposta-primary focus:ring-offset-1 dark:focus:ring-offset-brand-bg-dark-alt transition-colors";
+const iconButtonStyles = "p-2 rounded-md hover:bg-brand-bg-light-alt dark:hover:bg-brand-bg-dark focus:outline-none focus:ring-2 focus:ring-worldposta-primary focus:ring-offset-1 dark:focus:ring-offset-brand-bg-dark-alt transition-colors text-brand-text-secondary dark:text-brand-text-light-secondary";
 const selectStyle = `${inputStyle} appearance-none pr-10`; // Added pr-10 for icon space
+
+
+const CHECKOUT_STEPS = ["Order", "Checkout", "Confirmation"];
 
 
 export const ManageCloudEdgeSubscriptionPage: React.FC = () => {
@@ -178,7 +188,6 @@ export const ManageCloudEdgeSubscriptionPage: React.FC = () => {
   const [currentModalProvisioningModel, setCurrentModalProvisioningModel] = useState<typeof PROVISIONING_MODEL_OPTIONS[number]['id']>(PROVISIONING_MODEL_OPTIONS[0].id);
   const [currentModalInstanceTemplateId, setCurrentModalInstanceTemplateId] = useState<string | undefined>(INSTANCE_TEMPLATE_OPTIONS[0].id);
   const [currentModalBootDiskTypeId, setCurrentModalBootDiskTypeId] = useState<string>(BOOT_DISK_TYPE_OPTIONS[0].id);
-  const [currentModalThreadsPerCore, setCurrentModalThreadsPerCore] = useState<1 | 2>(2);
   const [currentModalConfidentialVmEnabled, setCurrentModalConfidentialVmEnabled] = useState<boolean>(false);
   const [currentModalGpusEnabled, setCurrentModalGpusEnabled] = useState<boolean>(false);
   const [currentModalGpuTypeId, setCurrentModalGpuTypeId] = useState<string | undefined>(GPU_TYPE_OPTIONS[0].id);
@@ -206,7 +215,6 @@ export const ManageCloudEdgeSubscriptionPage: React.FC = () => {
         setCurrentModalRegion(DEFAULT_REGION_ID);
         setCurrentModalAddons(getDefaultAddons().map(a => ({...a})));
         setCurrentModalProvisioningModel(PROVISIONING_MODEL_OPTIONS[0].id);
-        setCurrentModalThreadsPerCore(2);
         setCurrentModalConfidentialVmEnabled(false);
         setCurrentModalGpusEnabled(false);
         setCurrentModalGpuTypeId(GPU_TYPE_OPTIONS[0].id);
@@ -226,7 +234,6 @@ export const ManageCloudEdgeSubscriptionPage: React.FC = () => {
         setCurrentModalAddons(configToLoad.addons.map(a => ({...a})),
         );
         setCurrentModalProvisioningModel(configToLoad.provisioningModel);
-        setCurrentModalThreadsPerCore(configToLoad.threadsPerCore);
         setCurrentModalConfidentialVmEnabled(configToLoad.confidentialVmEnabled);
         setCurrentModalGpusEnabled(configToLoad.gpusEnabled);
         setCurrentModalGpuTypeId(configToLoad.gpuTypeId);
@@ -400,7 +407,6 @@ export const ManageCloudEdgeSubscriptionPage: React.FC = () => {
       provisioningModel: currentModalProvisioningModel,
       instanceTemplateId: currentModalServiceType === 'instance' ? currentModalInstanceTemplateId : undefined,
       bootDiskTypeId: currentModalBootDiskTypeId,
-      threadsPerCore: currentModalThreadsPerCore,
       confidentialVmEnabled: currentModalConfidentialVmEnabled,
       gpusEnabled: currentModalGpusEnabled,
       gpuTypeId: currentModalGpusEnabled ? currentModalGpuTypeId : undefined,
@@ -494,7 +500,6 @@ export const ManageCloudEdgeSubscriptionPage: React.FC = () => {
         duration: config.duration,
         instanceTemplateName: instanceTemplate?.name,
         bootDiskTypeName: bootDiskType?.name,
-        threadsPerCore: config.threadsPerCore,
         confidentialVmEnabled: config.confidentialVmEnabled,
       };
     });
@@ -546,7 +551,6 @@ export const ManageCloudEdgeSubscriptionPage: React.FC = () => {
                     provisioningModel: config.provisioningModel || PROVISIONING_MODEL_OPTIONS[0].id,
                     instanceTemplateId: config.instanceTemplateId || (config.serviceType === 'instance' ? template.id : undefined),
                     bootDiskTypeId: config.bootDiskTypeId || BOOT_DISK_TYPE_OPTIONS[0].id,
-                    threadsPerCore: config.threadsPerCore || 2,
                     confidentialVmEnabled: config.confidentialVmEnabled || false,
                     gpusEnabled: config.gpusEnabled || false,
                     gpuTypeId: config.gpuTypeId || (config.gpusEnabled ? GPU_TYPE_OPTIONS[0].id : undefined),
@@ -725,24 +729,14 @@ export const ManageCloudEdgeSubscriptionPage: React.FC = () => {
       )}
       <style>{`.animate-fadeInOut { animation: fadeInOutToast 3s ease-in-out; } @keyframes fadeInOutToast { 0% { opacity: 0; transform: translateY(-20px); } 10% { opacity: 1; transform: translateY(0); } 90% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-20px); } }`}</style>
 
-      <div className="mb-8 p-4 bg-brand-bg-light dark:bg-brand-bg-dark-alt shadow-lg rounded-xl border border-brand-border dark:border-brand-border-dark">
-        <h2 className="text-xl font-semibold text-brand-text dark:text-brand-text-light mb-3">Estimate Tools</h2>
-        <div className="flex flex-wrap gap-2">
-            <button onClick={handleSaveEstimateToLocalStorage} className={`${buttonSecondaryStyle} text-sm`} aria-label="Save current estimate to browser storage">Save Estimate</button>
-            <button onClick={() => handleLoadEstimateFromLocalStorage()} className={`${buttonSecondaryStyle} text-sm`} aria-label="Load estimate from browser storage">Load Estimate</button>
-            <button onClick={handleClearEstimate} className={`${buttonSecondaryStyle} text-sm text-danger dark:text-red-400 border-danger dark:border-red-500/50 hover:bg-red-50 dark:hover:bg-danger/10`} aria-label="Clear current estimate">Clear Estimate</button>
-            <button onClick={handleEmailEstimate} className={`${buttonSecondaryStyle} text-sm`} aria-label="Email this estimate">Email Estimate</button>
-            <button onClick={handleDownloadCSV} className={`${buttonSecondaryStyle} text-sm`} aria-label="Download estimate as CSV">Download CSV</button>
-        </div>
-         <div className="mt-3 text-xs text-brand-text-secondary dark:text-brand-text-light-secondary space-y-1">
-            <p>Saved estimates are stored in your browser's local storage and will persist until cleared or your browser data is wiped.</p>
-            <p>For sharing with others, use the "Email Estimate" option or save and share the downloaded CSV.</p>
-        </div>
-      </div>
-      
-      <h1 className="text-3xl sm:text-4xl font-bold text-brand-text dark:text-brand-text-light mb-8">
+      <h1 className="text-3xl sm:text-4xl font-bold text-brand-text dark:text-brand-text-light mb-4">
         Configure CloudEdge Services
       </h1>
+
+      <div className="mb-8 p-4 bg-brand-bg-light dark:bg-brand-bg-dark-alt shadow-md rounded-lg">
+        <Stepper steps={CHECKOUT_STEPS} currentStepIndex={0} />
+      </div>
+      
       <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-6 text-xs text-brand-text-secondary dark:text-brand-text-light-secondary">
         <div className="p-2 bg-yellow-50 dark:bg-yellow-500/10 border border-yellow-200 dark:border-yellow-500/30 rounded-md">
             <strong>Currency:</strong> All prices are in USD. Multi-currency support is a future enhancement.
@@ -811,9 +805,55 @@ export const ManageCloudEdgeSubscriptionPage: React.FC = () => {
                 Total estimated cost for all configurations for their selected durations.
               </p>
             </div>
-            <button className={`w-full mt-4 ${buttonPrimaryStyle}`} disabled={configurations.length === 0} aria-label="Proceed to checkout with current estimate">
-              Proceed to Checkout
-            </button>
+            <div className="mt-4 flex flex-col sm:flex-row gap-3">
+                <button 
+                    onClick={handleClearEstimate} 
+                    className={`w-full sm:w-auto text-danger dark:text-red-400 border border-danger dark:border-red-500/50 bg-transparent hover:bg-danger/10 dark:hover:bg-danger/20 font-semibold py-1.5 px-4 rounded-lg transition-colors disabled:opacity-60`} 
+                    disabled={configurations.length === 0}
+                    aria-label="Clear current estimate">
+                    Clear Estimate
+                </button>
+                <button 
+                    className={`w-full sm:flex-grow ${buttonPrimaryStyle}`} 
+                    disabled={configurations.length === 0} 
+                    aria-label="Proceed to checkout with current estimate">
+                    Proceed to Checkout
+                </button>
+            </div>
+            <div className="flex items-center justify-center space-x-2 mt-4 pt-4 border-t border-brand-border dark:border-brand-border-dark">
+                <button 
+                    onClick={handleSaveEstimateToLocalStorage} 
+                    className={iconButtonStyles} 
+                    title="Save Estimate" 
+                    aria-label="Save current estimate to browser storage"
+                >
+                    <ArchiveBoxArrowDownIcon className="w-5 h-5" />
+                </button>
+                <button 
+                    onClick={() => handleLoadEstimateFromLocalStorage()} 
+                    className={iconButtonStyles} 
+                    title="Load Estimate" 
+                    aria-label="Load estimate from browser storage"
+                >
+                    <FolderOpenIcon className="w-5 h-5" />
+                </button>
+                <button 
+                    onClick={handleEmailEstimate} 
+                    className={iconButtonStyles} 
+                    title="Email Estimate" 
+                    aria-label="Email this estimate"
+                >
+                    <EnvelopeIcon className="w-5 h-5" />
+                </button>
+                <button 
+                    onClick={handleDownloadCSV} 
+                    className={iconButtonStyles} 
+                    title="Download CSV" 
+                    aria-label="Download estimate as CSV"
+                >
+                    <DocumentArrowDownIcon className="w-5 h-5" />
+                </button>
+            </div>
           </div>
         </div>
       </div>
@@ -848,7 +888,6 @@ export const ManageCloudEdgeSubscriptionPage: React.FC = () => {
                     <p>{summaryItemForDetailsModal.osSummary}</p>
                     <p>{summaryItemForDetailsModal.provisioningSummary}</p>
                     <p><strong>Machine Type (Boot Disk):</strong> {summaryItemForDetailsModal.bootDiskTypeName || 'N/A'}</p>
-                    <p><strong>Threads per Core:</strong> {summaryItemForDetailsModal.threadsPerCore || 'N/A'}</p>
                     <p><strong>Confidential VM:</strong> {summaryItemForDetailsModal.confidentialVmEnabled ? 'Enabled' : 'Disabled'}</p>
                     <p>{summaryItemForDetailsModal.gpuSummary}</p>
 
@@ -905,10 +944,7 @@ export const ManageCloudEdgeSubscriptionPage: React.FC = () => {
                                     ))}
                                 </div>
                             </div>
-                             <div>
-                                <label htmlFor="configQuantity" className="block text-sm font-medium text-brand-text dark:text-brand-text-light mb-1">Quantity:</label>
-                                <input type="number" id="configQuantity" value={currentModalQuantity} min="1" onChange={(e) => setCurrentModalQuantity(Math.max(1, parseInt(e.target.value,10) || 1))} className={`${inputStyle} w-24`} aria-label="Quantity"/>
-                            </div>
+                             
                             <div>
                                 <label htmlFor="configRegion" className="block text-sm font-medium text-brand-text dark:text-brand-text-light mb-1">Deployment Region:</label>
                                 <div className="relative">
@@ -920,7 +956,8 @@ export const ManageCloudEdgeSubscriptionPage: React.FC = () => {
                                     </div>
                                 </div>
                             </div>
-                             <div>
+                           
+                            <div>
                                 <label htmlFor="configDuration" className="block text-sm font-medium text-brand-text dark:text-brand-text-light mb-1">Commitment Term:</label>
                                 <div className="relative">
                                     <select id="configDuration" value={currentModalDuration} onChange={(e) => setCurrentModalDuration(e.target.value as SubscriptionDuration)} className={selectStyle}>
@@ -930,6 +967,22 @@ export const ManageCloudEdgeSubscriptionPage: React.FC = () => {
                                         <ChevronDownIcon className="w-5 h-5" />
                                     </div>
                                 </div>
+                            </div>
+                             <div>
+                                <label htmlFor="bootDiskType" className="block text-sm font-medium text-brand-text dark:text-brand-text-light mb-1">Machine Type (Boot Disk):</label>
+                                <div className="relative">
+                                    <select id="bootDiskType" value={currentModalBootDiskTypeId} onChange={e => setCurrentModalBootDiskTypeId(e.target.value)} className={selectStyle}>
+                                        {BOOT_DISK_TYPE_OPTIONS.map(bdt => (<option key={bdt.id} value={bdt.id}>{bdt.name}</option>))}
+                                    </select>
+                                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-brand-text-secondary dark:text-brand-text-light-secondary">
+                                        <ChevronDownIcon className="w-5 h-5" />
+                                    </div>
+                                </div>
+                                <p className="text-xs text-brand-text-secondary dark:text-brand-text-light-secondary mt-0.5">Applies to "Flash Disk Storage / Boot Disk Size" cost and performance.</p>
+                            </div>
+                            <div>
+                                <label htmlFor="configQuantity" className="block text-sm font-medium text-brand-text dark:text-brand-text-light mb-1">Quantity:</label>
+                                <input type="number" id="configQuantity" value={currentModalQuantity} min="1" onChange={(e) => setCurrentModalQuantity(Math.max(1, parseInt(e.target.value,10) || 1))} className={`${inputStyle} w-24`} aria-label="Quantity"/>
                             </div>
                         </div>
 
@@ -1003,29 +1056,6 @@ export const ManageCloudEdgeSubscriptionPage: React.FC = () => {
                                                 <label key={pm.id} className="flex items-center text-sm text-brand-text dark:text-brand-text-light cursor-pointer">
                                                     <input type="radio" name="provisioningModel" value={pm.id} checked={currentModalProvisioningModel === pm.id} onChange={() => setCurrentModalProvisioningModel(pm.id)} className="h-4 w-4 text-worldposta-primary focus:ring-worldposta-primary"/>
                                                     <span className="ml-2">{pm.name}</span>
-                                                </label>
-                                            ))}
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <label htmlFor="bootDiskType" className="block text-sm font-medium text-brand-text dark:text-brand-text-light mb-1">Machine Type:</label>
-                                        <div className="relative">
-                                            <select id="bootDiskType" value={currentModalBootDiskTypeId} onChange={e => setCurrentModalBootDiskTypeId(e.target.value)} className={selectStyle}>
-                                                {BOOT_DISK_TYPE_OPTIONS.map(bdt => (<option key={bdt.id} value={bdt.id}>{bdt.name}</option>))}
-                                            </select>
-                                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-brand-text-secondary dark:text-brand-text-light-secondary">
-                                                <ChevronDownIcon className="w-5 h-5" />
-                                            </div>
-                                        </div>
-                                         <p className="text-xs text-brand-text-secondary dark:text-brand-text-light-secondary mt-0.5">Applies to "Flash Disk Storage / Boot Disk Size".</p>
-                                    </div>
-                                     <div>
-                                        <label className="block text-sm font-medium text-brand-text dark:text-brand-text-light mb-1">Threads per Core:</label>
-                                        <div className="flex items-center space-x-4 mt-1">
-                                            {[1, 2].map(tpc => (
-                                                <label key={tpc} className="flex items-center text-sm text-brand-text dark:text-brand-text-light cursor-pointer">
-                                                    <input type="radio" name="threadsPerCore" value={tpc} checked={currentModalThreadsPerCore === tpc} onChange={() => setCurrentModalThreadsPerCore(tpc as 1 | 2)} className="h-4 w-4 text-worldposta-primary focus:ring-worldposta-primary"/>
-                                                    <span className="ml-2">{tpc}</span>
                                                 </label>
                                             ))}
                                         </div>
